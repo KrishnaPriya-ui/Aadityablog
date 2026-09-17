@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A Static HTTP Server in C, Built on Raw WinSock</title>
+<meta name="description" content="How a static file server actually works underneath the framework — built by hand in C using the Windows Sockets API, HTTP parsing, MIME detection, and basic path-traversal protection.">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  :root {
+    --paper: #18181B;
+    --paper-raised: #242428;
+    --ink: #D4D4D8;
+    --ink-soft: #A1A1AA;
+    --ink-faint: #71717A;
+    --line: #3F3F46;
+    --line-strong: #52525B;
+    --blue: #00BCD4;
+    --blue-soft: #12383E;
+    --copper: #F87171;
+    --copper-soft: #3F2428;
+    --green: #4ADE80;
+    --green-soft: #173B2A;
+    --code-bg: #111113;
+    --code-text: #E4E4E7;
+    --code-faint: #94A3B8;
+    --radius: 4px;
+    --sans: 'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif;
+    --mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+    --measure: 680px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--blue); text-underline-offset: .15em; }
+  a:hover { color: var(--copper); }
+  a:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 3px;
+  }
+
+  code { font-family: var(--mono); }
+  p code, li code, td code, h4 code { background: var(--blue-soft); color: var(--blue); padding: .1em .35em; border-radius: 3px; font-size: .87em; }
+
+  .page { max-width: 1120px; margin: 0 auto; padding: 0 1.5rem; }
+
+  /* ---------- hero ---------- */
+  .hero { padding: 4.5rem 0 2.5rem; max-width: var(--measure); }
+  .hero h1 {
+    font-weight: 700;
+    font-size: clamp(1.85rem, 4vw, 2.55rem);
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    margin: 0 0 1.15rem;
+  }
+  .hero .subtitle { font-size: 1.12rem; color: var(--ink-soft); margin: 0; max-width: 610px; }
+
+  figure.wire { margin: 2.25rem 0 .75rem; max-width: 540px; }
+  .wire .prompt {
+    padding: .6rem 1.05rem;
+    font-family: var(--mono);
+    font-size: .78rem;
+    color: var(--code-faint);
+    background: var(--code-bg);
+    border-radius: var(--radius) var(--radius) 0 0;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+  }
+  .wire pre {
+    margin: 0;
+    background: var(--code-bg);
+    border-radius: 0 0 var(--radius) var(--radius);
+    padding: 1rem 1.1rem 1.2rem;
+    overflow-x: auto;
+  }
+  .wire code { font-size: .85rem; line-height: 1.7; color: var(--code-text); }
+  .wire .ok { color: #83C29F; }
+  figure.wire figcaption { margin-top: .75rem; font-size: .92rem; color: var(--ink-faint); }
+
+  /* ---------- layout ---------- */
+  .layout { padding-bottom: 3rem; }
+  @media (min-width: 900px) {
+    .layout { display: grid; grid-template-columns: 188px minmax(0, var(--measure)); gap: 3.5rem; align-items: start; }
+  }
+
+  .index-label { font-weight: 600; font-size: .95rem; margin: 0 0 .9rem; }
+  .index { display: flex; flex-direction: column; gap: .5rem; }
+  .index a { color: var(--ink-soft); text-decoration: none; font-size: .92rem; line-height: 1.4; border-left: 2px solid var(--line); padding-left: .75rem; }
+  .index a:hover { color: var(--blue); border-left-color: var(--blue); }
+  @media (min-width: 900px) {
+    aside.index-wrap { position: sticky; top: 2.5rem; align-self: start; padding-bottom: 2rem; }
+  }
+  @media (max-width: 899px) {
+    aside.index-wrap { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid var(--line); }
+    .index { flex-direction: row; flex-wrap: wrap; gap: .5rem .9rem; }
+  }
+
+  /* ---------- article typography ---------- */
+  article h2 {
+    font-weight: 600; font-size: 1.5rem; line-height: 1.3;
+    margin: 3rem 0 1rem; padding-top: 1.75rem; border-top: 1px solid var(--line);
+    scroll-margin-top: 1.5rem;
+  }
+  article > section:first-of-type h2 { border-top: none; padding-top: 0; margin-top: 0; }
+  article h3 { font-weight: 600; font-size: 1.1rem; margin: 1.9rem 0 .65rem; scroll-margin-top: 1.5rem; }
+  article h4 { font-weight: 600; font-size: 1rem; margin: 0 0 .3rem; }
+  article p { margin: 0 0 1.05rem; }
+  article ul, article ol { margin: 0 0 1.2rem; padding-left: 1.3rem; }
+  article li { margin-bottom: .4rem; }
+  article .lead { font-size: 1.04rem; color: var(--ink-soft); }
+
+  /* ---------- code / diagram snippets ---------- */
+  .snippet { margin: 1.4rem 0; border-radius: var(--radius); overflow: hidden; background: var(--code-bg); }
+  .snippet .label { padding: .5rem 1rem; font-family: var(--mono); font-size: .75rem; color: var(--code-faint); border-bottom: 1px solid rgba(255,255,255,.08); }
+  .snippet pre { margin: 0; padding: 1rem 1.15rem 1.2rem; overflow-x: auto; }
+  .snippet code { font-size: .83rem; line-height: 1.65; color: var(--code-text); }
+
+  .snippet.light { background: var(--paper-raised); border: 1px solid var(--line); }
+  .snippet.light .label { color: var(--ink-faint); border-bottom-color: var(--line); }
+  .snippet.light code { color: var(--ink); }
+
+  /* ---------- tables ---------- */
+  .table-wrap { overflow-x: auto; margin: 1.4rem 0; }
+  table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+  th, td { text-align: left; padding: .55rem .8rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th { font-weight: 600; border-bottom: 2px solid var(--line-strong); }
+  tbody tr:last-child td { border-bottom: none; }
+
+  /* ---------- notes ---------- */
+  .note { margin: 1.5rem 0; padding: .15rem 0 .15rem 1.1rem; border-left: 2px solid var(--blue); }
+  .note.warn { border-left-color: var(--copper); }
+  .note .note-label { display: block; font-weight: 600; font-size: .92rem; margin-bottom: .3rem; }
+  .note p { margin: 0; color: var(--ink-soft); font-size: .95rem; }
+
+  /* ---------- compare ---------- */
+  .compare { display: grid; grid-template-columns: 1fr; gap: 1rem; margin: 1.5rem 0; }
+  @media (min-width: 600px) { .compare { grid-template-columns: 1fr 1fr; } }
+  .compare-col { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .compare-col header { padding: .55rem .9rem; font-size: .84rem; font-weight: 600; border-bottom: 1px solid var(--line); }
+  .compare-col.bad header { background: var(--copper-soft); color: var(--copper); }
+  .compare-col.good header { background: var(--green-soft); color: var(--green); }
+  .compare-col pre { margin: 0; padding: 1rem; font-family: var(--mono); font-size: .81rem; line-height: 1.7; color: var(--ink-soft); text-align: center; }
+
+  /* ---------- steps ---------- */
+  .steps { list-style: none; margin: 1.6rem 0; padding: 0; }
+  .step { position: relative; display: flex; gap: 1rem; padding-bottom: 1.4rem; }
+  .step:last-child { padding-bottom: 0; }
+  .step::before { content: ''; position: absolute; left: 13px; top: 28px; bottom: -4px; width: 1px; background: var(--line-strong); }
+  .step:last-child::before { display: none; }
+  .step .node {
+    flex: none; width: 28px; height: 28px; border-radius: 50%;
+    border: 1px solid var(--blue); color: var(--blue); background: var(--paper);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: .78rem; font-weight: 600;
+    position: relative; z-index: 1;
+  }
+  .step .body p { margin: 0; color: var(--ink-soft); font-size: .93rem; }
+
+  /* ---------- layer stack ---------- */
+  .layers { display: flex; flex-direction: column; gap: 3px; margin: 1.6rem 0; border-radius: var(--radius); overflow: hidden; }
+  .layer { padding: .8rem 1.1rem; color: #fff; }
+  .layer strong { display: block; font-size: .95rem; font-weight: 600; }
+  .layer span { font-family: var(--mono); font-size: .8rem; opacity: .82; }
+  .layer:nth-child(1) { background: #16232C; }
+  .layer:nth-child(2) { background: #164E63; }
+  .layer:nth-child(3) { background: #007C8D; }
+  .layer:nth-child(4) { background: #12616D; }
+  .layer:nth-child(5) { background: #2B4A50; }
+
+  footer { border-top: 1px solid var(--line); padding: 2rem 0 3.5rem; margin-top: 1rem; }
+  footer p { color: var(--ink-faint); font-size: .87rem; margin: 0; }
+
+  .bg-darkbg { background-color:#18181b; }
+  .bg-cardbg { background-color:#242428; }
+  .border-bordercolor { border-color:#3f3f46; }
+  body { background:#18181b; color:#d4d4d8; font-family:Inter, ui-sans-serif, system-ui, sans-serif; }
+  body::before { content:""; position:fixed; inset:0; pointer-events:none; opacity:.2; background-image:linear-gradient(rgba(0,188,212,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(0,188,212,.045) 1px,transparent 1px); background-size:48px 48px; }
+  .page { max-width:none; padding:0; }
+  .site-header { border-bottom:1px solid #3f3f46; background:#18181b; }
+  .site-header-inner { max-width:80rem; margin:0 auto; padding:1.5rem 1rem; text-align:center; }
+  .site-title { color:#b91c1c; font-family:'Times New Roman', Times, serif; font-size:clamp(2.25rem,5vw,3rem); font-weight:800; letter-spacing:.15em; text-transform:uppercase; text-decoration:none; }
+  .site-subtitle { color:#22d3ee; font-family:'JetBrains Mono',Consolas,monospace; font-size:.75rem; letter-spacing:.08em; margin-top:.25rem; text-transform:uppercase; }
+  .hero { max-width:none; padding:0; }
+  .hero h1 { color:#f4f4f5; font-family:'JetBrains Mono',Consolas,monospace; font-size:clamp(1.5rem,3vw,2.25rem); font-weight:700; line-height:1.25; margin:0 0 1rem; }
+  .hero .subtitle { color:#a1a1aa; font-size:1rem; max-width:none; }
+  .layout { display:block; padding:0; }
+  .layout > main { width:100%; }
+  article { width:100%; max-width:none; }
+  article h2 { color:#f4f4f5; font-family:'JetBrains Mono',Consolas,monospace; }
+  article h3, article h4 { color:#e4e4e7; font-family:'JetBrains Mono',Consolas,monospace; }
+  article p, article li, article td { color:#d4d4d8; }
+  .index-wrap, .wire { display:none; }
+  .page > footer { padding:2rem 1rem 3.5rem; }
+  * { transition:none !important; animation:none !important; }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="site-title" href="../aaditya_security_blog.html">AADITYA SHARMA</a>
+      <p class="site-subtitle">Web Application Security &amp; Reverse Engineering Labs</p>
+    </div>
+  </header>
+
+  <div class="layout">
+    <main class="w-full px-4 py-8">
+      <article class="bg-cardbg p-6 sm:p-10 rounded-lg border border-bordercolor">
+        <header class="hero">
+          <h1>Eight Function Calls and a Folder Named <code>public</code></h1>
+          <p class="subtitle">Every web framework hides the same handful of operating-system calls behind a single line of code. This project doesn't. Written in C against the raw Windows Sockets API, it opens a TCP socket, reads an HTTP request by hand, and answers it by reading a file off disk — the same mechanics sitting underneath Node, Apache, and nginx, just not hidden this time.</p>
+        </header>
+
+        <section id="overview">
+          <h2>What it actually does</h2>
+          <p>Point a browser at <code>http://localhost:8080/</code> and a few things happen in order: a TCP connection opens, the browser sends a plain-text request, the server reads it, maps the requested path onto a file inside a folder named <code>public</code>, works out what kind of file it is, and streams it back. If the file isn't there, it sends a 404 instead. That's the whole job.</p>
+          <ul>
+            <li>Listens on TCP port 8080</li>
+            <li>Reads and parses a raw HTTP request by hand</li>
+            <li>Maps URL paths onto files inside <code>./public</code></li>
+            <li>Detects MIME type from the file extension</li>
+            <li>Streams files back in chunks, never all at once</li>
+            <li>Returns a 404 for anything missing</li>
+            <li>Blocks the simplest form of directory traversal</li>
+            <li>Handles one client at a time, start to finish</li>
+          </ul>
+          <p>None of it needs a framework. It needs eight WinSock functions, a dozen C standard library calls, and some care with pointers. That's what the rest of this walks through, roughly in the order the code actually runs.</p>
+        </section>
+
+        <section id="toolbox">
+          <h2>What it's built with</h2>
+          <p>The whole project is one C file and a folder of static assets to serve.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Piece</th><th>Purpose</th></tr></thead>
+              <tbody>
+                <tr><td>C</td><td>Programming language</td></tr>
+                <tr><td>WinSock2</td><td>Windows networking API</td></tr>
+                <tr><td>TCP/IP</td><td>Transport and network-layer communication</td></tr>
+                <tr><td>HTTP</td><td>Application-layer protocol</td></tr>
+                <tr><td>File I/O</td><td>Reading files out of <code>./public</code></td></tr>
+                <tr><td>IPv4</td><td>Network addressing</td></tr>
+                <tr><td>Port 8080</td><td>Where the server listens</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="snippet">
+            <div class="label">server.c — headers</div>
+            <pre><code>#define _WIN32_WINNT 0x0601
+
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+#include &lt;winsock2.h&gt;
+#include &lt;ws2tcpip.h&gt;
+
+#pragma comment(lib, "Ws2_32.lib")</code></pre>
+          </div>
+          <p><code>_WIN32_WINNT</code> pins the minimum Windows version being targeted. The <code>pragma comment</code> line tells the linker to pull in <code>Ws2_32.lib</code> — without it, <code>socket()</code>, <code>bind()</code>, <code>listen()</code>, and <code>accept()</code> won't link at all.</p>
+          <div class="snippet light">
+            <div class="label">project layout</div>
+            <pre><code>WebServer/
+├── server.c
+└── public/
+    ├── index.html
+    ├── style.css
+    ├── script.js
+    ├── image.png
+    └── data.json</code></pre>
+          </div>
+          <div class="snippet">
+            <div class="label">server.c — configuration</div>
+            <pre><code>#define PORT 8080
+#define PUBLIC_DIR "./public"</code></pre>
+          </div>
+          <p>Which is why <code>http://localhost:8080/</code> maps to <code>./public/index.html</code>, and <code>http://localhost:8080/style.css</code> maps to <code>./public/style.css</code>.</p>
+        </section>
+
+        <section id="winsock-init">
+          <h2>Waking up WinSock</h2>
+          <p>Nothing else works until Windows' networking subsystem is loaded into the process. That's the only job of <code>WSAStartup()</code>, and it has to run before the first socket exists.</p>
+          <div class="snippet">
+            <div class="label">server.c</div>
+            <pre><code>WSADATA wsa;
+
+if (WSAStartup(MAKEWORD(2, 2), &amp;wsa) != 0) {
+    printf("Failed. Error Code : %d\n", WSAGetLastError());
+    return 1;
+}</code></pre>
+          </div>
+          <p><code>MAKEWORD(2, 2)</code> requests WinSock version 2.2 — the version almost everything targets today. <code>wsa</code> gets filled in with details about the loaded implementation the program never inspects. A non-zero return means initialization failed, and the only sane response is to print <code>WSAGetLastError()</code> and exit.</p>
+        </section>
+
+        <section id="socket-bind">
+          <h2>Creating a socket, then giving it an address</h2>
+
+          <h3>The socket itself</h3>
+          <div class="snippet">
+            <div class="label">server.c</div>
+            <pre><code>SOCKET server = socket(AF_INET, SOCK_STREAM, 0);
+
+if (server == INVALID_SOCKET) {
+    printf("Could not create socket : %d\n", WSAGetLastError());
+    WSACleanup();
+    return 1;
+}</code></pre>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Argument</th><th>Means</th></tr></thead>
+              <tbody>
+                <tr><td><code>AF_INET</code></td><td>IPv4 addressing</td></tr>
+                <tr><td><code>SOCK_STREAM</code></td><td>TCP — a reliable, ordered byte stream</td></tr>
+                <tr><td><code>0</code></td><td>Let the OS pick the matching protocol for that type</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Put together: an IPv4 TCP socket.</p>
+
+          <h3>Describing an address</h3>
+          <div class="snippet">
+            <div class="label">server.c</div>
+            <pre><code>struct sockaddr_in addr;
+memset(&amp;addr, 0, sizeof(addr));
+
+addr.sin_family = AF_INET;
+addr.sin_addr.s_addr = INADDR_ANY;
+addr.sin_port = htons(PORT);</code></pre>
+          </div>
+          <p><code>memset()</code> zeroes the struct first, so no leftover stack memory ends up in fields the code never explicitly sets. <code>sin_family = AF_INET</code> marks it as IPv4. <code>INADDR_ANY</code> means "accept connections on every local network interface at once" rather than one specific IP — for local testing, that's reachable at <code>127.0.0.1</code> or <code>localhost</code>. <code>htons(PORT)</code> — Host TO Network Short — reorders the port number's bytes into the order network protocols expect, since a Windows machine's native byte order doesn't have to match the network's.</p>
+
+          <h3>Binding it</h3>
+          <div class="snippet">
+            <div class="label">server.c</div>
+            <pre><code>if (bind(server, (struct sockaddr*)&amp;addr, sizeof(addr)) == SOCKET_ERROR) {
+    printf("Bind failed with error code : %d\n", WSAGetLastError());
+    closesocket(server);
+    WSACleanup();
+    return 1;
+}</code></pre>
+          </div>
+          <p><code>bind()</code> expects a pointer to the generic <code>struct sockaddr</code>, and <code>addr</code> is the more specific <code>struct sockaddr_in</code> — the cast satisfies the compiler without changing a single byte in memory. If <code>bind()</code> fails, the usual culprits are a port that's already in use or a process without permission to claim it.</p>
+        </section>
+
+        <section id="listen-accept">
+          <h2>Listening, then accepting</h2>
+          <div class="snippet">
+            <div class="label">server.c</div>
+            <pre><code>if (listen(server, 10) == SOCKET_ERROR) {
+    printf("Listen failed with error code : %d\n", WSAGetLastError());
+    closesocket(server);
+    WSACleanup();
+    return 1;
+}</code></pre>
+          </div>
+          <p>The <code>10</code> isn't a client limit — it's the size of the queue for connections that have arrived but haven't been accepted yet. The socket is now in a listening state, waiting.</p>
+          <div class="snippet">
+            <div class="label">server.c</div>
+            <pre><code>while (1) {
+    SOCKET client = accept(server, NULL, NULL);
+    /* handle this client, then loop back */
+}</code></pre>
+          </div>
+          <p><code>accept()</code> blocks until a browser connects, then hands back a second socket dedicated to that one client — the original <code>server</code> socket keeps listening for whoever's next.</p>
+          <div class="note warn">
+            <span class="note-label">No threads</span>
+            <p>This server reads the request, serves the file, and closes the connection before it loops back to <code>accept()</code> again. One slow client makes everyone behind it wait — more on that trade-off later.</p>
+          </div>
+        </section>
+
+        <section id="parse-request">
+          <h2>Reading what the browser asked for</h2>
+          <div class="snippet">
+            <div class="label">server.c</div>
+            <pre><code>char buffer[2048];
+int bytesReceived = recv(client, buffer, sizeof(buffer) - 1, 0);
+buffer[bytesReceived] = '\0';</code></pre>
+          </div>
+          <p><code>recv()</code> is told to accept at most 2047 bytes — one short of the buffer's real size. The last slot is reserved so the code can drop a <code>'\0'</code> on the end afterward and treat the request as an ordinary C string, which is what the next step needs.</p>
+          <div class="snippet">
+            <div class="label">server.c</div>
+            <pre><code>char method[10], path[256];
+sscanf(buffer, "%s %s", method, path);</code></pre>
+          </div>
+          <div class="snippet light">
+            <div class="label">anatomy of a request line</div>
+            <pre><code>GET /index.html HTTP/1.1
+ │      │            │
+ │      │            └─ discarded
+ │      └────────────── path
+ └───────────────────── method</code></pre>
+          </div>
+          <p><code>sscanf()</code> pulls the first two space-separated tokens into <code>method</code> and <code>path</code>. The HTTP version gets parsed by the same format string, but since the code never looks at it again, it's simply discarded.</p>
+          <div class="snippet">
+            <div class="label">server.c</div>
+            <pre><code>if (strcmp(path, "/") == 0) {
+    strcpy(path, "/index.html");
+}</code></pre>
+          </div>
+          <p>A bare <code>/</code> becomes <code>/index.html</code> — the one line that gives the server a homepage.</p>
+        </section>
+
+        <section id="path-traversal">
+          <h2>Staying inside the folder</h2>
+          <div class="snippet">
+            <div class="label">server.c</div>
+            <pre><code>if (strstr(path, "..")) {
+    send_404(client);
+}</code></pre>
+          </div>
+          <p>Without this, a request for <code>/../secret.txt</code> would get concatenated straight onto <code>./public</code> and could resolve to a file outside the folder the server is supposed to be confined to. Checking for two consecutive dots is a blunt way to catch that.</p>
+          <div class="compare">
+            <div class="compare-col bad">
+              <header>Without the check</header>
+              <pre>GET /../secret.txt
+        ↓
+./public/../secret.txt
+        ↓
+resolves outside ./public</pre>
+            </div>
+            <div class="compare-col good">
+              <header>With the check</header>
+              <pre>GET /../secret.txt
+        ↓
+strstr(path, "..") matches
+        ↓
+send_404()</pre>
+            </div>
+          </div>
+          <div class="note">
+            <span class="note-label">Worth knowing</span>
+            <p>This is a substring check, not real path validation — it can misfire on legitimate filenames and it's not what a production server should rely on. More on that in <a href="#limitations">where it stops</a>.</p>
+          </div>
+        </section>
+
+        <section id="build-path">
+          <h2>Turning a URL into a file path</h2>
+          <div class="snippet">
+            <div class="label">server.c</div>
+            <pre><code>char full_path[512];
+
+snprintf(full_path, sizeof(full_path), "%s%s", PUBLIC_DIR, path);</code></pre>
+          </div>
+          <p>With <code>PUBLIC_DIR</code> set to <code>./public</code> and <code>path</code> set to <code>/index.html</code>, the result is <code>./public/index.html</code>. <code>snprintf()</code> is handed <code>sizeof(full_path)</code> explicitly, so it can't write past the 512 bytes actually allocated. <code>sprintf()</code> would trust the input completely; <code>snprintf()</code> doesn't have to.</p>
+        </section>
+
+        <section id="serve-file">
+          <h2>Serving the file</h2>
+          <p>Everything above exists to get here. <code>serve_file()</code> does six things, in order:</p>
+          <ol class="steps">
+            <li class="step"><span class="node">1</span><div class="body"><h4>Open the file</h4><p>In binary mode, so nothing gets misread as text</p></div></li>
+            <li class="step"><span class="node">2</span><div class="body"><h4>Measure it</h4><p>Find the size in bytes before sending anything</p></div></li>
+            <li class="step"><span class="node">3</span><div class="body"><h4>Identify it</h4><p>Work out a MIME type from the file extension</p></div></li>
+            <li class="step"><span class="node">4</span><div class="body"><h4>Write the headers</h4><p>Status line, content type, length, connection</p></div></li>
+            <li class="step"><span class="node">5</span><div class="body"><h4>Stream the body</h4><p>8 KB at a time, until the file is exhausted</p></div></li>
+            <li class="step"><span class="node">6</span><div class="body"><h4>Close it</h4><p>Release the file handle before moving on</p></div></li>
+          </ol>
+
+          <h3>Opening it</h3>
+          <div class="snippet"><div class="label">server.c</div><pre><code>FILE *file = fopen(file_path, "rb");</code></pre></div>
+          <p><code>"rb"</code> — read, binary. Binary mode matters because most of what lives in <code>public/</code> isn't text.</p>
+
+          <h3>If it isn't there</h3>
+          <div class="snippet"><div class="label">server.c</div><pre><code>if (!file) {
+    send_404(client);
+    return;
+}</code></pre></div>
+          <p><code>fopen()</code> returns <code>NULL</code> rather than raising an error when a file is missing or unreadable — that <code>NULL</code> is the only signal the server needs to send a 404 and stop.</p>
+
+          <h3>Measuring it</h3>
+          <div class="snippet"><div class="label">server.c</div><pre><code>fseek(file, 0, SEEK_END);
+long file_size = ftell(file);
+fseek(file, 0, SEEK_SET);</code></pre></div>
+          <p>Jump to the end, ask where the file pointer landed — at the end, that position is the size in bytes — then jump back to the start before actually reading anything.</p>
+
+          <h3>Naming it</h3>
+          <div class="snippet"><div class="label">server.c</div><pre><code>const char *ext = strrchr(path, '.');</code></pre></div>
+          <p><code>strrchr()</code> finds the <em>last</em> dot in the path rather than the first, which matters for names like <code>archive.tar.gz</code>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Extension</th><th>MIME type</th></tr></thead>
+              <tbody>
+                <tr><td>.html, .htm</td><td>text/html</td></tr>
+                <tr><td>.css</td><td>text/css</td></tr>
+                <tr><td>.js</td><td>application/javascript</td></tr>
+                <tr><td>.png</td><td>image/png</td></tr>
+                <tr><td>.jpg, .jpeg</td><td>image/jpeg</td></tr>
+                <tr><td>.gif</td><td>image/gif</td></tr>
+                <tr><td>.ico</td><td>image/x-icon</td></tr>
+                <tr><td>.svg</td><td>image/svg+xml</td></tr>
+                <tr><td>.json</td><td>application/json</td></tr>
+                <tr><td>anything else</td><td>text/plain</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="snippet"><div class="label">server.c</div><pre><code>if (!ext) return "application/octet-stream";</code></pre></div>
+          <p>No extension at all falls back to a generic "just bytes" type.</p>
+
+          <h3>Writing the headers</h3>
+          <div class="snippet"><div class="label">server.c</div><pre><code>const char *mime_type = get_mime_type(file_path);
+char header[512];
+
+int header_len = sprintf(header,
+    "HTTP/1.1 200 OK\r\n"
+    "Content-Type: %s\r\n"
+    "Content-Length: %ld\r\n"
+    "Connection: close\r\n"
+    "\r\n",
+    mime_type, file_size);
+
+send(client, header, header_len, 0);</code></pre></div>
+          <p>Content-Type comes straight out of the lookup table. Content-Length tells the browser exactly how many body bytes to expect, computed from the <code>fseek</code>/<code>ftell</code> trick above. Connection: close is a promise the server keeps a few lines later. HTTP headers end in <code>\r\n</code> — carriage return plus line feed, not just a line feed — and the blank line after the last header is what actually marks the boundary between headers and body.</p>
+
+          <h3>Streaming the body</h3>
+          <div class="snippet"><div class="label">server.c</div><pre><code>char buffer[8192];
+size_t bytes_read;
+
+while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) &gt; 0) {
+    send(client, buffer, (int)bytes_read, 0);
+}
+
+fclose(file);</code></pre></div>
+          <div class="note">
+            <span class="note-label">Why 8 KB at a time</span>
+            <p>Nothing here ever holds a whole file in memory. A 2 KB stylesheet and a 200 MB video get read the exact same way, in the exact same size chunks, until <code>fread()</code> returns 0 at end of file.</p>
+          </div>
+
+          <h3>Why bytes, not strings</h3>
+          <p><code>fread()</code> and <code>send()</code> move raw bytes. C string functions stop at the first <code>'\0'</code>, and a binary file — a PNG, in particular — can have plenty of those in the middle. Treating the body as a string would truncate it. Treating it as bytes doesn't.</p>
+        </section>
+
+        <section id="not-found">
+          <h2>Sending a 404</h2>
+          <div class="snippet"><div class="label">HTTP response</div><pre><code>HTTP/1.1 404 Not Found
+Content-Type: text/html
+Content-Length: 48
+
+&lt;html&gt;&lt;body&gt;&lt;h1&gt;404 Not Found&lt;/h1&gt;&lt;/body&gt;&lt;/html&gt;</code></pre></div>
+          <p>Same shape as the 200 response — status line, headers, blank line, body — just a different status and a small hand-written HTML body instead of a file read off disk.</p>
+        </section>
+
+        <section id="full-flow">
+          <h2>One request, start to finish</h2>
+          <p>Say <code>public/index.html</code> contains one line: <code>&lt;h1&gt;Hello World&lt;/h1&gt;</code>. Here's the exchange it produces:</p>
+          <div class="snippet"><div class="label">request</div><pre><code>GET / HTTP/1.1
+Host: localhost:8080</code></pre></div>
+          <div class="snippet"><div class="label">response</div><pre><code>HTTP/1.1 200 OK
+Content-Type: text/html
+Content-Length: 20
+Connection: close
+
+&lt;h1&gt;Hello World&lt;/h1&gt;</code></pre></div>
+          <ol>
+            <li><code>recv()</code> reads the request</li>
+            <li><code>method</code> becomes <code>GET</code>, <code>path</code> becomes <code>/</code></li>
+            <li><code>/</code> is rewritten to <code>/index.html</code></li>
+            <li><code>./public</code> + <code>/index.html</code> → <code>./public/index.html</code></li>
+            <li><code>fopen()</code> opens it, in binary mode</li>
+            <li><code>fseek</code>/<code>ftell</code> find its size — 20 bytes</li>
+            <li>the extension <code>.html</code> maps to <code>text/html</code></li>
+            <li>the 200 header goes out</li>
+            <li>the 20 bytes of HTML go out, in one chunk</li>
+            <li><code>closesocket(client)</code> ends the connection</li>
+          </ol>
+        </section>
+
+        <section id="cleanup">
+          <h2>Closing things properly</h2>
+          <p>After the last <code>send()</code>, <code>closesocket(client)</code> ends that one connection — matching the Connection: close header already sent, so the browser knows not to expect anything more without asking again. The server socket itself stays open and loops back to <code>accept()</code>; only when the whole program shuts down do <code>closesocket(server)</code> and <code>WSACleanup()</code> run.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Resource</th><th>Cleaned up with</th></tr></thead>
+              <tbody>
+                <tr><td>The open file</td><td><code>fclose()</code></td></tr>
+                <tr><td>The client connection</td><td><code>closesocket(client)</code></td></tr>
+                <tr><td>The server socket</td><td><code>closesocket(server)</code></td></tr>
+                <tr><td>WinSock itself</td><td><code>WSACleanup()</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="testing">
+          <h2>Taking it for a spin</h2>
+          <p>Start the server and try each of these against <code>http://localhost:8080</code>:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Request</th><th>Expected result</th></tr></thead>
+              <tbody>
+                <tr><td>/</td><td>200 OK, serves ./public/index.html</td></tr>
+                <tr><td>/style.css</td><td>200 OK, Content-Type: text/css</td></tr>
+                <tr><td>/script.js</td><td>200 OK, Content-Type: application/javascript</td></tr>
+                <tr><td>/image.png</td><td>200 OK, Content-Type: image/png</td></tr>
+                <tr><td>/doesnotexist.html</td><td>404 Not Found</td></tr>
+                <tr><td>/../secret.txt</td><td>caught by the ".." check, 404 Not Found</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="limitations">
+          <h2>Where it stops being production code</h2>
+          <p class="lead">This is a genuinely useful way to learn what a web server is doing underneath the framework. It is not something to point at the internet. A few of the corners it cuts:</p>
+          <ul>
+            <li><strong>send() can return early.</strong> It's allowed to transmit fewer bytes than asked. The code assumes every call sends everything; a robust server loops until the byte count actually adds up.</li>
+            <li><strong>recv() is only ever called once.</strong> TCP is a stream, not a sequence of neatly-arranged messages — a request can arrive in pieces, and production code keeps reading until it sees the <code>\r\n\r\n</code> that ends the headers.</li>
+            <li><strong>The HTTP method is never checked.</strong> GET, POST, and DELETE are all treated identically right now.</li>
+            <li><strong>sscanf() has no width limit.</strong> Unexpectedly long input can write past the end of the fixed-size <code>method</code> and <code>path</code> buffers; <code>%9s</code> / <code>%255s</code> closes that.</li>
+            <li><strong>The traversal check is a substring match, not real path validation</strong> — it can miss real attacks and reject harmless filenames alike.</li>
+            <li><strong>MIME matching is case-sensitive.</strong> <code>IMAGE.PNG</code> won't match <code>.png</code> in the table.</li>
+            <li><strong>The header is built with sprintf(),</strong> not the bounded <code>snprintf()</code> used everywhere else.</li>
+            <li><strong>There's no concurrency.</strong> One client at a time, and a slow one blocks the rest.</li>
+          </ul>
+          <p>A more serious version of this server would hand each accepted connection to its own thread, or use I/O multiplexing, so a slow client stops holding up everyone behind it. It would also add path canonicalization, proper URL decoding, request- and header-size limits, and correct handling of partial reads and writes.</p>
+        </section>
+
+        <section id="source-code">
+          <h2>Complete server.c</h2>
+          <p>Here is the complete source used for the project. It is intentionally small so the socket lifecycle and request-to-file path stay visible.</p>
+          <div class="snippet">
+          <div class="label">server.c — complete source</div>
+          <pre><code>#define _WIN32_WINNT 0x0601
+    #include &lt;stdio.h&gt;
+    #include &lt;stdlib.h&gt;
+    #include &lt;string.h&gt;
+    #include &lt;winsock2.h&gt;
+    #include &lt;ws2tcpip.h&gt;
+
+    #pragma comment(lib, "Ws2_32.lib")
+
+    #define PORT 8080
+    #define PUBLIC_DIR "./public"
+
+    const char* get_mime_type(const char *path) {
+      const char *ext = strrchr(path, '.');
+      if (!ext) return "application/octet-stream";
+      if (strcmp(ext, ".html") == 0 || strcmp(ext, ".htm") == 0) return "text/html";
+      if (strcmp(ext, ".css") == 0) return "text/css";
+      if (strcmp(ext, ".js") == 0) return "application/javascript";
+      if (strcmp(ext, ".png") == 0) return "image/png";
+      if (strcmp(ext, ".jpg") == 0 || strcmp(ext, ".jpeg") == 0) return "image/jpeg";
+      if (strcmp(ext, ".gif") == 0) return "image/gif";
+      if (strcmp(ext, ".ico") == 0) return "image/x-icon";
+      if (strcmp(ext, ".svg") == 0) return "image/svg+xml";
+      if (strcmp(ext, ".json") == 0) return "application/json";
+      return "text/plain";
+    }
+
+    void send_404(SOCKET client) {
+      const char *response =
+        "HTTP/1.1 404 Not Found\r\n"
+        "Content-Type: text/html\r\n"
+        "Content-Length: 48\r\n"
+        "\r\n"
+        "&lt;html&gt;&lt;body&gt;&lt;h1&gt;404 Not Found&lt;/h1&gt;&lt;/body&gt;&lt;/html&gt;";
+      send(client, response, (int)strlen(response), 0);
+    }
+
+    void serve_file(SOCKET client, const char *file_path) {
+      FILE *file = fopen(file_path, "rb");
+      if (!file) { send_404(client); return; }
+
+      fseek(file, 0, SEEK_END);
+      long file_size = ftell(file);
+      fseek(file, 0, SEEK_SET);
+
+      const char *mime_type = get_mime_type(file_path);
+      char header[512];
+      int header_len = sprintf(header,
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: %s\r\n"
+        "Content-Length: %ld\r\n"
+        "Connection: close\r\n\r\n",
+        mime_type, file_size);
+      send(client, header, header_len, 0);
+
+      char buffer[8192];
+      size_t bytes_read;
+      while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) &gt; 0) {
+        send(client, buffer, (int)bytes_read, 0);
+      }
+      fclose(file);
+    }
+
+    int main(void) {
+      WSADATA wsa;
+      if (WSAStartup(MAKEWORD(2, 2), &amp;wsa) != 0) return 1;
+
+      SOCKET server = socket(AF_INET, SOCK_STREAM, 0);
+      if (server == INVALID_SOCKET) { WSACleanup(); return 1; }
+
+      struct sockaddr_in addr;
+      memset(&amp;addr, 0, sizeof(addr));
+      addr.sin_family = AF_INET;
+      addr.sin_addr.s_addr = INADDR_ANY;
+      addr.sin_port = htons(PORT);
+
+      if (bind(server, (struct sockaddr*)&amp;addr, sizeof(addr)) == SOCKET_ERROR) {
+        closesocket(server); WSACleanup(); return 1;
+      }
+      if (listen(server, 10) == SOCKET_ERROR) {
+        closesocket(server); WSACleanup(); return 1;
+      }
+
+      printf("Serving '%s' at http://localhost:%d\\n", PUBLIC_DIR, PORT);
+      while (1) {
+        SOCKET client = accept(server, NULL, NULL);
+        if (client == INVALID_SOCKET) break;
+
+        char buffer[2048];
+        int bytesReceived = recv(client, buffer, sizeof(buffer) - 1, 0);
+        if (bytesReceived &gt; 0) {
+          buffer[bytesReceived] = '\\0';
+          char method[10], path[256];
+          sscanf(buffer, "%s %s", method, path);
+          if (strcmp(path, "/") == 0) strcpy(path, "/index.html");
+
+          if (strstr(path, "..")) {
+            send_404(client);
+          } else {
+            char full_path[512];
+            snprintf(full_path, sizeof(full_path), "%s%s", PUBLIC_DIR, path);
+            serve_file(client, full_path);
+          }
+        }
+        closesocket(client);
+      }
+      closesocket(server);
+      WSACleanup();
+      return 0;
+    }</code></pre>
+          </div>
+        </section>
+
+        <section id="cheatsheet">
+          <h2>Function reference</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Function</th><th>Purpose</th></tr></thead>
+              <tbody>
+                <tr><td><code>WSAStartup()</code></td><td>Initializes WinSock</td></tr>
+                <tr><td><code>socket()</code></td><td>Creates a socket</td></tr>
+                <tr><td><code>bind()</code></td><td>Assigns an IP and port</td></tr>
+                <tr><td><code>listen()</code></td><td>Puts the socket into listening mode</td></tr>
+                <tr><td><code>accept()</code></td><td>Accepts a client connection</td></tr>
+                <tr><td><code>recv()</code></td><td>Receives data</td></tr>
+                <tr><td><code>send()</code></td><td>Sends data</td></tr>
+                <tr><td><code>closesocket()</code></td><td>Closes a socket</td></tr>
+                <tr><td><code>WSACleanup()</code></td><td>Shuts down WinSock</td></tr>
+                <tr><td><code>fopen()</code></td><td>Opens the requested file</td></tr>
+                <tr><td><code>fseek()</code></td><td>Moves the file pointer</td></tr>
+                <tr><td><code>ftell()</code></td><td>Gets the file pointer's position</td></tr>
+                <tr><td><code>fread()</code></td><td>Reads file data</td></tr>
+                <tr><td><code>fclose()</code></td><td>Closes the file</td></tr>
+                <tr><td><code>strrchr()</code></td><td>Finds the file extension</td></tr>
+                <tr><td><code>strcmp()</code></td><td>Compares strings</td></tr>
+                <tr><td><code>strstr()</code></td><td>Searches for a substring</td></tr>
+                <tr><td><code>snprintf()</code></td><td>Safely formats a string</td></tr>
+                <tr><td><code>sscanf()</code></td><td>Extracts fields from the request</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Strip away the error handling and it comes down to eight steps, in order:</p>
+          <ol class="steps">
+            <li class="step"><span class="node">1</span><div class="body"><h4>Create</h4><p><code>socket()</code></p></div></li>
+            <li class="step"><span class="node">2</span><div class="body"><h4>Bind</h4><p><code>bind()</code></p></div></li>
+            <li class="step"><span class="node">3</span><div class="body"><h4>Listen</h4><p><code>listen()</code></p></div></li>
+            <li class="step"><span class="node">4</span><div class="body"><h4>Accept</h4><p><code>accept()</code></p></div></li>
+            <li class="step"><span class="node">5</span><div class="body"><h4>Receive</h4><p><code>recv()</code></p></div></li>
+            <li class="step"><span class="node">6</span><div class="body"><h4>Process</h4><p>parse, check, build the path</p></div></li>
+            <li class="step"><span class="node">7</span><div class="body"><h4>Send</h4><p><code>send()</code> — headers, then body</p></div></li>
+            <li class="step"><span class="node">8</span><div class="body"><h4>Close</h4><p><code>closesocket()</code></p></div></li>
+          </ol>
+        </section>
+
+        <section id="layers">
+          <h2>What's underneath</h2>
+          <p>The server code only ever speaks one language: HTTP. Everything under that — the reliable byte stream, the addressing, the raw socket calls — is TCP, IPv4, and WinSock quietly doing their part.</p>
+          <div class="layers">
+            <div class="layer"><strong>HTTP</strong><span>GET /index.html</span></div>
+            <div class="layer"><strong>TCP</strong><span>reliable, ordered byte stream</span></div>
+            <div class="layer"><strong>IPv4</strong><span>127.0.0.1 : 8080</span></div>
+            <div class="layer"><strong>WinSock</strong><span>socket() → bind() → listen() → accept()</span></div>
+            <div class="layer"><strong>Network interface</strong><span>Ethernet / Wi-Fi / loopback</span></div>
+          </div>
+        </section>
+
+        <section id="wrap-up">
+          <h2>What building it by hand teaches you</h2>
+          <p>Frameworks exist so nobody has to write this twice. But writing it once — by hand, in C, against the raw WinSock API — is what makes a single line like <code>app.get('/')</code> stop looking like magic. Every request that hits this server takes the same path: a socket accepts a connection, a few hundred bytes get parsed by hand, a file gets opened, measured, typed, and streamed back in chunks, and the connection closes.</p>
+          <p>nginx and Apache do all of this too. They just do it faster, safer, and for more than one client at a time.</p>
+        </section>
+
+      </article>
+    </main>
+  </div>
+
+  <footer>
+    <p>Written from a project README documenting a static HTTP file server built in C on the Windows Sockets API.</p>
+  </footer>
+</div>
+
+</body>
+</html>

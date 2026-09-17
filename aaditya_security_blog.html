@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aaditya Sharma | Web Security & Reverse Engineering</title>
+    <!-- External Libraries: Tailwind CSS, FontAwesome, Highlight.js -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+
+    <link rel="stylesheet" href="styles.css">
+    <script src="Web Security/posts.js"></script>
+    <script src="Reverse Engineering/posts.js"></script>
+    <script src="Custom Tools/posts.js"></script>
+    <script src="Malware Research/posts.js"></script>
+    <script src="script.js"></script>
+</head>
+<body class="min-h-screen flex flex-col">
+
+
+    <header class="border-b border-bordercolor bg-darkbg sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 py-6 text-center">
+            <h1 class="azeria-title text-4xl sm:text-5xl font-extrabold tracking-widest text-red-700 uppercase hover:text-red-600 transition-colors cursor-pointer" onclick="navigateTo('home')">
+                AADITYA SHARMA
+            </h1>
+            <p class="text-xs sm:text-sm text-cyan-400 font-mono mt-1 tracking-wider uppercase">
+                Web Application Security & Reverse Engineering Labs
+            </p>
+        </div>
+
+        <nav class="border-t border-bordercolor bg-cardbg">
+            <div class="max-w-7xl mx-auto px-4 flex flex-wrap justify-center items-center gap-1 sm:gap-6 text-xs sm:text-sm font-mono py-2">
+                <button onclick="filterCategory('All')" class="nav-btn px-3 py-1.5 rounded hover:text-accent transition text-zinc-300">All Posts</button>
+                <button onclick="filterCategory('Web Security')" class="nav-btn px-3 py-1.5 rounded hover:text-accent transition text-zinc-300">Web Security</button>
+                <button onclick="filterCategory('Reverse Engineering')" class="nav-btn px-3 py-1.5 rounded hover:text-accent transition text-zinc-300">Reverse Engineering</button>
+                <button onclick="filterCategory('Custom Tools')" class="nav-btn px-3 py-1.5 rounded hover:text-accent transition text-zinc-300">Custom Tools</button>
+                <button onclick="filterCategory('Malware Research')" class="nav-btn px-3 py-1.5 rounded hover:text-accent transition text-zinc-300">Malware Research</button>
+                <button onclick="navigateTo('about')" class="nav-btn px-3 py-1.5 rounded text-accent font-semibold hover:underline">About</button>
+            </div>
+        </nav>
+    </header>
+
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 py-8">
+        
+        <!-- View: Blog Post List / Reader View -->
+        <div id="view-blog" class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            <div class="lg:col-span-3 space-y-8">
+                <div id="category-header" class="hidden border-b border-zinc-700 pb-2">
+                    <span class="text-xs text-zinc-400 font-mono uppercase">Filter active:</span>
+                    <h2 id="current-category-title" class="text-xl font-mono text-accent font-bold">All Posts</h2>
+                </div>
+
+                <div id="posts-container" class="space-y-12"></div>
+
+                <div id="single-post-view" class="hidden space-y-6">
+                    <button onclick="closePostReader()" class="text-xs font-mono text-accent hover:underline flex items-center gap-1">
+                        <i class="fa-solid fa-arrow-left"></i> Back to all posts
+                    </button>
+                    <article id="single-post-content" class="bg-cardbg p-6 sm:p-8 rounded-lg border border-bordercolor space-y-6">
+                    </article>
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <aside class="space-y-6">
+                <div class="bg-cardbg border border-bordercolor p-5 rounded-lg space-y-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-12 h-12 rounded-full bg-zinc-800 border border-accent flex items-center justify-center text-accent text-xl font-mono font-bold">
+                            AS
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-zinc-100 font-mono">Aaditya Sharma</h3>
+                            <p class="text-xs text-cyan-400 font-mono">Bug Hunter & RE</p>
+                        </div>
+                    </div>
+                    <p class="text-xs text-zinc-400 leading-relaxed">
+                        Security researcher focused on web vulnerabilities, binary reverse engineering, custom C/C++ tool development, and binary exploitation.
+                    </p>
+                    <div class="pt-2 border-t border-zinc-700 flex items-center gap-3 text-sm">
+                        <a href="https://github.com/Aadityadcks" target="_blank" rel="noopener" class="text-zinc-400 hover:text-accent transition flex items-center gap-1 text-xs">
+                            <i class="fa-brands fa-github"></i> Aadityadcks
+                        </a>
+                    </div>
+                </div>
+
+                <div class="bg-cardbg border border-bordercolor p-5 rounded-lg space-y-3">
+                    <h4 class="text-xs font-mono uppercase text-cyan-400 font-bold tracking-wider border-b border-zinc-700 pb-2">
+                        Core Focus Topics
+                    </h4>
+                    <ul class="text-xs font-mono space-y-2 text-zinc-300">
+                        <li class="hover:text-accent cursor-pointer flex items-center justify-between" onclick="filterCategory('Web Security')">
+                            <span><i class="fa-solid fa-globe text-zinc-500 mr-2"></i>Web Security</span>
+                            <span class="text-zinc-500 text-[10px]" id="count-web">0</span>
+                        </li>
+                        <li class="hover:text-accent cursor-pointer flex items-center justify-between" onclick="filterCategory('Reverse Engineering')">
+                            <span><i class="fa-solid fa-microchip text-zinc-500 mr-2"></i>Reverse Engineering</span>
+                            <span class="text-zinc-500 text-[10px]" id="count-re">0</span>
+                        </li>
+                        <li class="hover:text-accent cursor-pointer flex items-center justify-between" onclick="filterCategory('Custom Tools')">
+                            <span><i class="fa-solid fa-code text-zinc-500 mr-2"></i>Custom Tools</span>
+                            <span class="text-zinc-500 text-[10px]" id="count-tools">0</span>
+                        </li>
+                        <li class="hover:text-accent cursor-pointer flex items-center justify-between" onclick="filterCategory('Malware Research')">
+                            <span><i class="fa-solid fa-bug text-zinc-500 mr-2"></i>Malware Research</span>
+                            <span class="text-zinc-500 text-[10px]" id="count-malware">0</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="bg-cardbg border border-bordercolor p-5 rounded-lg space-y-3 text-xs font-mono">
+                    <h4 class="text-xs uppercase text-cyan-400 font-bold tracking-wider border-b border-zinc-700 pb-2">
+                        Open Source & Repos
+                    </h4>
+                    <p class="text-zinc-400 text-[11px]">Check out custom tooling, disassembly scripts, and proof of concept exploits on GitHub.</p>
+                    <a href="https://github.com/Aadityadcks" target="_blank" class="block text-center py-2 px-3 bg-zinc-800 hover:bg-zinc-700 text-accent rounded border border-zinc-700 transition">
+                        <i class="fa-brands fa-github mr-1"></i> Visit GitHub Profile
+                    </a>
+                </div>
+            </aside>
+        </div>
+
+        <div id="view-about" class="hidden max-w-4xl mx-auto space-y-8">
+            <div class="bg-cardbg border border-bordercolor rounded-lg p-6 sm:p-10 space-y-8">
+                <div class="border-b border-zinc-700 pb-6">
+                    <h2 class="text-3xl font-bold font-mono text-zinc-100">About Aaditya Sharma</h2>
+                    <p class="text-accent font-mono text-sm mt-1">Web Application Security Engineer & Reverse Engineering Researcher</p>
+                </div>
+
+                <div class="space-y-4">
+                    <h3 class="text-lg font-mono font-semibold text-zinc-200 uppercase tracking-wide flex items-center gap-2">
+                        <i class="fa-solid fa-user-shield text-accent"></i> Executive Summary
+                    </h3>
+                    <p class="text-zinc-300 text-sm leading-relaxed">
+                        I am a cybersecurity researcher specializing in <strong>Web Application Security</strong>, <strong>Bug Hunting</strong>, and <strong>Software Reverse Engineering</strong>. My work focuses on identifying complex vulnerability logic, dissecting compiled binaries, and reverse engineering existing software and games to understand their internal mechanisms and build custom tools/security solutions.
+                    </p>
+                    <p class="text-zinc-300 text-sm leading-relaxed">
+                        This technical blog serves as a public repository of my deep-dive research, tool-building walkthroughs, malware analysis breakdowns, and step-by-step security tutorials designed to help beginners and fellow security enthusiasts master technical fundamentals.
+                    </p>
+                </div>
+
+                <div class="space-y-4">
+                    <h3 class="text-lg font-mono font-semibold text-zinc-200 uppercase tracking-wide flex items-center gap-2">
+                        <i class="fa-solid fa-screwdriver-wrench text-accent"></i> Technical Stack & Tooling
+                    </h3>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 font-mono text-xs">
+                        <div class="bg-zinc-900 border border-zinc-700 p-3 rounded flex items-center gap-2">
+                            <i class="fa-brands fa-linux text-red-400 text-base"></i>
+                            <div>
+                                <span class="block font-bold text-zinc-200">OS</span>
+                                <span class="text-zinc-400">Kali Linux, Windows</span>
+                            </div>
+                        </div>
+                        <div class="bg-zinc-900 border border-zinc-700 p-3 rounded flex items-center gap-2">
+                            <i class="fa-solid fa-code text-cyan-400 text-base"></i>
+                            <div>
+                                <span class="block font-bold text-zinc-200">Languages</span>
+                                <span class="text-zinc-400">C / C++, Python, JS</span>
+                            </div>
+                        </div>
+                        <div class="bg-zinc-900 border border-zinc-700 p-3 rounded flex items-center gap-2">
+                            <i class="fa-solid fa-bug text-orange-400 text-base"></i>
+                            <div>
+                                <span class="block font-bold text-zinc-200">Web Security</span>
+                                <span class="text-zinc-400">Burp Suite Pro, OWASP</span>
+                            </div>
+                        </div>
+                        <div class="bg-zinc-900 border border-zinc-700 p-3 rounded flex items-center gap-2">
+                            <i class="fa-solid fa-microchip text-purple-400 text-base"></i>
+                            <div>
+                                <span class="block font-bold text-zinc-200">Disassemblers</span>
+                                <span class="text-zinc-400">IDA Pro, Ghidra</span>
+                            </div>
+                        </div>
+                        <div class="bg-zinc-900 border border-zinc-700 p-3 rounded flex items-center gap-2">
+                            <i class="fa-solid fa-terminal text-green-400 text-base"></i>
+                            <div>
+                                <span class="block font-bold text-zinc-200">Dynamic Analysis</span>
+                                <span class="text-zinc-400">x64dbg, GDB, Process Monitor</span>
+                            </div>
+                        </div>
+                        <div class="bg-zinc-900 border border-zinc-700 p-3 rounded flex items-center gap-2">
+                            <i class="fa-solid fa-gears text-yellow-400 text-base"></i>
+                            <div>
+                                <span class="block font-bold text-zinc-200">Tooling</span>
+                                <span class="text-zinc-400">Custom Memory Hookers</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <h3 class="text-lg font-mono font-semibold text-zinc-200 uppercase tracking-wide flex items-center gap-2">
+                        <i class="fa-solid fa-briefcase text-accent"></i> Target Roles & Value Offered
+                    </h3>
+                    <div class="bg-zinc-900/60 border-l-4 border-accent p-4 rounded text-xs leading-relaxed space-y-2 text-zinc-300">
+                        <p><strong>Primary Target Roles:</strong> Web Application Security Engineer, Security Researcher, Bug Hunter, Vulnerability Analyst.</p>
+                        <p><strong>Key Strengths:</strong> Ability to break down application logic, automate exploit testing via custom code, perform binary reverse engineering without relying solely on automated tools, and write clean technical documentation.</p>
+                    </div>
+                </div>
+
+                <div class="pt-4 border-t border-zinc-700 flex flex-wrap gap-4 font-mono text-xs">
+                    <a href="https://github.com/Aadityadcks" target="_blank" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded text-accent flex items-center gap-2 transition">
+                        <i class="fa-brands fa-github text-base"></i> GitHub: Aadityadcks
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-admin" class="hidden max-w-4xl mx-auto space-y-6">
+            <div class="bg-cardbg border border-bordercolor rounded-lg p-6 space-y-6">
+                <div class="flex justify-between items-center border-b border-zinc-700 pb-4">
+                    <div>
+                        <h2 class="text-2xl font-bold font-mono text-zinc-100">Admin Portal</h2>
+                        <p class="text-xs text-zinc-400 font-mono">Manage content, add posts, and remove writeups</p>
+                    </div>
+                    <button onclick="logoutAdmin()" class="px-3 py-1 bg-red-900/50 hover:bg-red-800 text-red-200 text-xs font-mono rounded border border-red-700">
+                        Exit Admin
+                    </button>
+                </div>
+
+                <!-- Post Creation / Edit Form -->
+                <form id="post-form" onsubmit="handlePostSubmit(event)" class="space-y-4 text-xs font-mono">
+                    <input type="hidden" id="form-post-id" value="">
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-zinc-300 mb-1">Post Title *</label>
+                            <input type="text" id="form-title" required placeholder="e.g. Reverse Engineering Win32 API Calls" 
+                                   class="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-zinc-200 focus:outline-none focus:border-accent">
+                        </div>
+                        <div>
+                            <label class="block text-zinc-300 mb-1">Category *</label>
+                            <select id="form-category" required class="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-zinc-200 focus:outline-none focus:border-accent">
+                                <option value="Web Security">Web Security</option>
+                                <option value="Reverse Engineering">Reverse Engineering</option>
+                                <option value="Custom Tools">Custom Tools</option>
+                                <option value="Malware Research">Malware Research</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-zinc-300 mb-1">Post Summary / Snippet *</label>
+                        <input type="text" id="form-summary" required placeholder="Brief 1-2 sentence overview of the article" 
+                               class="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-zinc-200 focus:outline-none focus:border-accent">
+                    </div>
+
+                    <div>
+                        <label class="block text-zinc-300 mb-1">Full Article Content (Supports HTML formatting) *</label>
+                        <textarea id="form-content" rows="6" required placeholder="Write your full technical article here..." 
+                                  class="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-zinc-200 focus:outline-none focus:border-accent font-mono"></textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-zinc-300 mb-1">Code Snippet (Optional - C++, Assembly, Python, HTTP Request)</label>
+                        <textarea id="form-code" rows="4" placeholder="// Paste technical code snippet here..." 
+                                  class="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-zinc-200 focus:outline-none focus:border-accent font-mono text-xs"></textarea>
+                    </div>
+
+                    <div class="flex items-center gap-3 pt-2">
+                        <button type="submit" class="px-5 py-2 bg-accent hover:bg-accenthover text-zinc-900 font-bold rounded transition">
+                            <i class="fa-solid fa-paper-plane mr-1"></i> Save & Publish Post
+                        </button>
+                        <button type="button" onclick="resetForm()" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-700">
+                            Clear
+                        </button>
+                    </div>
+                </form>
+
+                <div class="pt-6 border-t border-zinc-700 space-y-3">
+                    <h3 class="text-sm font-bold font-mono text-zinc-200">Existing Posts</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs font-mono text-zinc-300">
+                            <thead class="bg-zinc-900 text-zinc-400 border-b border-zinc-700">
+                                <tr>
+                                    <th class="p-2">Title</th>
+                                    <th class="p-2">Category</th>
+                                    <th class="p-2">Date</th>
+                                    <th class="p-2 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-table-body" class="divide-y divide-zinc-800">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Admin Authentication Modal -->
+    <div id="admin-auth-modal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+        <div class="bg-cardbg border border-zinc-700 p-6 rounded-lg max-w-sm w-full space-y-4 font-mono text-xs">
+            <h3 class="text-sm font-bold text-zinc-100 flex items-center gap-2">
+                <i class="fa-solid fa-user-lock text-accent"></i> Admin Authentication
+            </h3>
+            <p class="text-zinc-400">Enter admin passcode to manage blog posts (Default demo passcode: <span class="text-accent">admin123</span>):</p>
+            <input type="password" id="admin-pass-input" placeholder="Passcode" class="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-zinc-200 focus:outline-none focus:border-accent">
+            <div id="auth-error" class="text-red-400 hidden">Invalid password.</div>
+            <div class="flex justify-end gap-2">
+                <button onclick="closeAdminModal()" class="px-3 py-1.5 bg-zinc-800 text-zinc-300 rounded">Cancel</button>
+                <button onclick="verifyAdminPass()" class="px-3 py-1.5 bg-accent text-zinc-900 font-bold rounded">Login</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="border-t border-bordercolor bg-cardbg py-6 mt-12 text-center text-xs font-mono text-zinc-500">
+        <div class="max-w-7xl mx-auto px-4 space-y-2">
+            <p>© 2026 Aaditya Sharma | Web Application Security & Reverse Engineering</p>
+            <p class="text-[11px] text-zinc-600">Built with Azeria-Labs minimalism aesthetic for technical research & recruiting showcase.</p>
+        </div>
+    </footer>
+
+</body>
+</html>

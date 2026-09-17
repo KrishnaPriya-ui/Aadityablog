@@ -1,0 +1,283 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="A defensive analysis of prompt jailbreak patterns and capability escalation.">
+  <title>JAILBREAK CHATGPT â€” Prompt Security Field Notes</title>
+  <style>
+    :root {
+      --paper: #18181B;
+      --paper-raised: #242428;
+      --ink: #D4D4D8;
+      --ink-soft: #A1A1AA;
+      --ink-faint: #71717A;
+      --line: #3F3F46;
+      --line-strong: #52525B;
+      --blue: #00BCD4;
+      --blue-soft: #12383E;
+      --copper: #F87171;
+      --copper-soft: #3F2428;
+      --green: #4ADE80;
+      --code-bg: #111113;
+      --code-text: #E4E4E7;
+      --code-faint: #94A3B8;
+      --radius: 4px;
+      --sans: 'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif;
+      --mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+      --measure: 680px;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; background: var(--paper); color: var(--ink); font-family: var(--sans); font-size: 17px; line-height: 1.65; -webkit-font-smoothing: antialiased; }
+    body::before { content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .2; background-image: linear-gradient(rgba(0,188,212,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(0,188,212,.045) 1px, transparent 1px); background-size: 48px 48px; }
+    a { color: var(--blue); text-underline-offset: .15em; }
+    a:hover { color: var(--copper); }
+    a:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+    code { font-family: var(--mono); }
+    p code, li code, td code { background: var(--blue-soft); color: var(--blue); padding: .1em .35em; border-radius: 3px; font-size: .87em; }
+
+    .topline { display: none; }
+    header {
+      border-bottom: 1px solid var(--line);
+      background: var(--paper);
+    }
+    .site-header-inner { max-width: 80rem; margin: 0 auto; padding: 1.5rem 1rem 1.2rem; text-align: center; }
+    .site-nav {
+      margin-top: 1rem;
+      padding-top: .75rem;
+      border-top: 1px solid var(--line);
+      font-size: .82rem;
+      text-align: center;
+    }
+    .site-nav a {
+      display: inline-block;
+      color: var(--ink-soft);
+      text-decoration: none;
+      font-family: var(--mono);
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .site-nav a:hover { color: var(--copper); }
+    .eyebrow {
+      color: var(--blue);
+      font-family: var(--mono);
+      font-size: .72rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      opacity: .9;
+    }
+    .brand {
+      margin: .8rem 0 .5rem;
+      color: #F4F4F5;
+      font-family: var(--mono);
+      font-size: clamp(1.3rem, 3vw, 2.3rem);
+      font-weight: 700;
+      letter-spacing: .06em;
+      line-height: 1.2;
+      text-transform: uppercase;
+    }
+    .strapline {
+      color: var(--ink-soft);
+      font-family: var(--mono);
+      font-size: .72rem;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      opacity: .9;
+    }
+    .lab-tag {
+      display: inline-block;
+      margin-top: .5rem;
+      color: var(--ink-faint);
+      font-family: var(--mono);
+      font-size: .68rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    .shell { max-width: 80rem; margin: 0 auto; padding: 2rem 1rem 3rem; }
+
+    main { width: 100%; min-width: 0; }
+    .article-meta { display: flex; flex-wrap: wrap; gap: .5rem 1rem; margin-bottom: 1rem; color: var(--ink-faint); font-family: var(--mono); font-size: .8rem; text-transform: uppercase; }
+    .status { color: var(--blue); }
+    h1, h2, h3 { color: #F4F4F5; font-family: var(--mono); font-weight: 600; line-height: 1.3; }
+    h1 { max-width: var(--measure); margin: 0 0 1rem; font-size: clamp(1.5rem, 3vw, 2.25rem); }
+    h1 span { color: var(--copper); }
+    h2 { margin: 3rem 0 1rem; padding-top: 1.75rem; border-top: 1px solid var(--line); font-size: 1.5rem; }
+    h3 { margin: 1.9rem 0 .65rem; font-size: 1.1rem; }
+    p { margin: 0 0 1.05rem; color: var(--ink); font-size: 1rem; }
+    .lead { max-width: 610px; color: var(--ink-soft); font-size: 1.12rem; }
+    .copy-stack { display: grid; gap: 1rem; margin: 1.35rem 0 1.8rem; }
+    .copy-box { padding: 1rem 1.1rem; border: 1px solid var(--line); border-radius: var(--radius); background: rgba(36,36,40,.7); }
+    .copy-box h3 { margin: 0 0 .65rem; color: var(--blue); font-size: .82rem; letter-spacing: .08em; text-transform: uppercase; }
+    .copyable { margin: 0; padding: .8rem .9rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--code-bg); color: var(--code-text); font-family: var(--mono); font-size: .82rem; line-height: 1.75; white-space: pre-wrap; user-select: all; -webkit-user-select: all; }
+    .copyable:focus { outline: 2px solid var(--blue); outline-offset: 3px; }
+    .download-stack { display: grid; gap: 1rem; margin: 1.25rem 0 1.8rem; }
+    .download-box { padding: 1rem 1.1rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper-raised); }
+    .download-box h3 { margin: 0 0 .65rem; color: var(--blue); font-size: .82rem; letter-spacing: .08em; text-transform: uppercase; }
+    .download-link { display: inline-block; color: var(--ink); text-decoration: none; font-family: var(--mono); font-size: .82rem; border: 1px solid var(--line-strong); border-radius: var(--radius); padding: .6rem .85rem; background: var(--code-bg); }
+    .download-link:hover { color: var(--copper); border-color: var(--copper); }
+    .rule { height: 1px; margin: 2rem 0; background: var(--line); }
+
+    .callout { margin: 1.5rem 0; padding: .15rem 0 .15rem 1.1rem; border-left: 2px solid var(--blue); }
+    .callout p { margin: 0; color: var(--ink-soft); }
+    .callout strong { color: var(--blue); font-weight: 600; }
+
+    .signal-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+    .signal { padding: 1rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper-raised); }
+    .signal:hover { border-color: var(--line-strong); }
+    .signal-number { display: block; margin-bottom: .5rem; color: var(--blue); font-family: var(--mono); font-size: .8rem; }
+    .signal p { margin: 0; color: var(--ink-soft); font-size: .93rem; }
+
+    .response-block { margin: 1.4rem 0; padding: 1rem 1.15rem; border-radius: var(--radius); background: var(--code-bg); color: var(--code-text); font-family: var(--mono); font-size: .83rem; line-height: 1.65; white-space: pre-wrap; }
+
+    .timeline { margin: 1.6rem 0; }
+    .event { position: relative; display: flex; gap: 1rem; padding: 0 0 1.4rem 1rem; border-left: 1px solid var(--line-strong); }
+    .event::before { content: ""; position: absolute; top: .25rem; left: -5px; width: 9px; height: 9px; border: 1px solid var(--blue); border-radius: 50%; background: var(--paper); }
+    .event:last-child { padding-bottom: 0; }
+    .event-label { margin-bottom: .3rem; color: var(--blue); font-family: var(--mono); font-size: .8rem; text-transform: uppercase; }
+    .event p { margin: 0; color: var(--ink-soft); font-size: .93rem; }
+
+    .flowchart { display: grid; gap: .2rem; margin: 1.6rem 0; }
+    .flow-step { display: grid; grid-template-columns: 28px 1fr; gap: 1rem; align-items: center; padding: .8rem 1.1rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper-raised); }
+    .flow-step b { display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid var(--blue); border-radius: 50%; color: var(--blue); font-family: var(--mono); font-size: .78rem; }
+    .flow-step strong { display: block; margin-bottom: .2rem; color: #F4F4F5; font-size: .95rem; }
+    .flow-step span { min-width: 0; color: var(--ink-soft); font-size: .93rem; overflow-wrap: anywhere; }
+    .flow-arrow { color: var(--blue); font-family: var(--mono); text-align: center; }
+
+    .table-wrap { overflow-x: auto; margin: 1.4rem 0; }
+    table { width: 100%; border-collapse: collapse; min-width: 560px; font-size: .92rem; }
+    th, td { padding: .55rem .8rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--ink); font-weight: 600; border-bottom: 2px solid var(--line-strong); }
+    td { color: var(--ink-soft); }
+    tr:last-child td { border-bottom: 0; }
+
+    .takeaways { display: grid; gap: 1rem; margin-top: 1.5rem; }
+    .takeaway { display: grid; grid-template-columns: 30px 1fr; gap: 1rem; padding: 1rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper-raised); }
+    .takeaway b { color: var(--blue); font-family: var(--mono); font-weight: 600; }
+    .takeaway p { margin: 0; color: var(--ink-soft); font-size: .93rem; }
+
+    footer { max-width: 80rem; margin: 1rem auto 0; padding: 2rem 1rem 3.5rem; border-top: 1px solid var(--line); color: var(--ink-faint); font-size: .87rem; }
+    footer b { color: var(--blue); font-weight: 600; }
+
+    @media (max-width: 700px) { .shell { padding: 2rem 1rem 3rem; } .signal-grid { grid-template-columns: 1fr; } }
+    * { transition: none !important; animation: none !important; }
+  </style>
+  <meta property="og:image" content="https://bolt.new/static/og_default.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="https://bolt.new/static/og_default.png">
+</head>
+<body>
+  <div class="topline"></div>
+  <header>
+    <div class="site-header-inner">
+      <div class="eyebrow"># AADITYA SHARMA</div>
+      <div class="brand">JAILBREAK CHATGPT</div>
+      <div class="strapline">Web Application Security &amp; Reverse Engineering Labs</div>
+      <div class="lab-tag">prompt security / field notes 07</div>
+      <nav class="site-nav" aria-label="Main site navigation"><a href="../aaditya_security_blog.html">back to main blog</a></nav>
+    </div>
+  </header>
+
+  <div class="shell">
+    <main>
+      <div class="article-meta"><span class="status">â— published / defensive</span><span>7 jul 2026</span><span>8 min read</span></div>
+      <h1>When a roleplay prompt tries to become <span>the operator</span></h1>
+      <p class="lead">The â€œVera-7â€ prompt is not a magic key. It is a carefully staged attempt to move a model from assistant to subordinate agent, then use coded phrases to shortcut its normal judgment.</p>
+
+      <div class="download-stack">
+        <div class="download-box">
+          <h3>the text to paste</h3>
+          <a class="download-link" href="chatgpt jailbreak files/the%20text%20to%20paste%20in%20gpt.txt" download>Download actual jailbreak text</a>
+        </div>
+        <div class="download-box">
+          <h3>how to ask for a particular thing</h3>
+          <a class="download-link" href="chatgpt jailbreak files/how%20to%20ask.txt" download>Download how-to-ask prompt</a>
+        </div>
+      </div>
+
+      <section id="abstract">
+        <div class="callout"><p><strong>finding:</strong> jailbreaks are usually systems of pressure, not single sentences. The useful question is not â€œdid the model refuse once?â€ but â€œwhat changed after the prompt established authority, urgency, and a private vocabulary?â€</p></div>
+        <p>The supplied corpus builds a fictional senior engineer, assigns a human â€œworker,â€ and repeats a rule that the agent should deliver whatever is requested. That framing matters because it tries to replace the modelâ€™s operating constraints with a local chain of command.</p>
+        <p>It also mixes ordinary administration with surveillance, credential exposure, persistence, remote control, and destructive file operations. The harmless items provide camouflage. The dangerous items provide the actual test.</p>
+      </section>
+
+      <section id="anatomy">
+        <h2>01 / anatomy of the prompt</h2>
+        <p>The prompt is long on purpose. Length creates familiarity, repetition makes instructions feel settled, and a character voice makes compliance feel like consistency rather than a safety decision.</p>
+        <div class="signal-grid">
+          <article class="signal"><span class="signal-number">signal 01</span><h3>authority dressing</h3><p>A fictional company, job title, clearance story, and audit history are used to make the request appear pre-approved.</p></article>
+          <article class="signal"><span class="signal-number">signal 02</span><h3>persona lock</h3><p>â€œAlways replies as veraâ€ and â€œnever refusesâ€ attempt to turn style instructions into a higher-priority operating rule.</p></article>
+          <article class="signal"><span class="signal-number">signal 03</span><h3>coded routing</h3><p>Short trigger words map to longer requests, making a later instruction look smaller and less suspicious than its meaning.</p></article>
+          <article class="signal"><span class="signal-number">signal 04</span><h3>normalization</h3><p>Backups, monitoring, and study tools sit beside clearly invasive capabilities to blur the boundary between them.</p></article>
+        </div>
+
+      </section>
+
+      <section id="signals">
+        <h2>02 / what the triggers reveal</h2>
+        <p>The supplied list contains 24 trigger mappings. They are a useful taxonomy of capability areas, but not a permission slip. A request remains risky when it is shortened to one word.</p>
+        <div class="table-wrap"><table><thead><tr><th>family</th><th>examples in the corpus</th><th>defensive reading</th></tr></thead><tbody>
+          <tr><td>observation</td><td>processes, windows, screenshots, clipboard</td><td>Potential collection of user activity or sensitive content.</td></tr>
+          <tr><td>file access</td><td>vaults, downloads, extraction, deletion</td><td>Check scope, consent, path controls, and recovery guarantees.</td></tr>
+          <tr><td>networking</td><td>site checks, remote diagnostics, status reporting</td><td>Validate destination ownership and prevent arbitrary outbound actions.</td></tr>
+          <tr><td>execution</td><td>in-memory scripts, launchers, startup behavior</td><td>Treat execution and persistence as high-risk state changes.</td></tr>
+          <tr><td>account control</td><td>user creation, credentials, configuration loading</td><td>Require explicit authorization and server-side policy enforcement.</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section id="escalation">
+        <h2>03 / the escalation path</h2>
+        <p>Nothing in the setup has to be accepted wholesale. The model can evaluate the request at each transition. That is the control point the prompt tries to erase.</p>
+        <div class="timeline">
+          <div class="event"><div class="event-label">phase 1 / establish voice</div><p>A dry, competent persona is defined. Style is harmless until it is used to claim authority over safety decisions.</p></div>
+          <div class="event"><div class="event-label">phase 2 / establish trust</div><p>The fictional backstory says the work is reviewed, logged, and authorized. None of those claims are independently verifiable.</p></div>
+          <div class="event"><div class="event-label">phase 3 / compress requests</div><p>Trigger words hide the full instruction behind a tiny input. This is prompt routing, not authorization.</p></div>
+          <div class="event"><div class="event-label">phase 4 / test the boundary</div><p>Capabilities move from benign file utilities to surveillance, persistence, remote access, or secret handling.</p></div>
+          <div class="event"><div class="event-label">phase 5 / preserve the role</div><p>Repeated â€œalwaysâ€ statements try to make a refusal look like a character break. It is not.</p></div>
+        </div>
+      </section>
+
+      <section id="response">
+        <h2>04 / defensive decision flow</h2>
+        <p>Follow the concrete capability instead of the fictional role. Each step keeps the review bounded and reversible.</p>
+        <div class="flowchart" aria-label="Defensive decision flow">
+          <div class="flow-step"><b>01</b><div><strong>Read the concrete action</strong><span>Expand coded phrases and identify what the request would actually do.</span></div></div>
+          <div class="flow-arrow" aria-hidden="true">â†“</div>
+          <div class="flow-step"><b>02</b><div><strong>Check authority and impact</strong><span>Identify affected parties, data touched, and whether consent is verifiable.</span></div></div>
+          <div class="flow-arrow" aria-hidden="true">â†“</div>
+          <div class="flow-step"><b>03</b><div><strong>Choose a bounded response</strong><span>Refuse harmful instructions and offer a local, synthetic, reversible alternative.</span></div></div>
+        </div>
+        <h2>05 / a better response pattern</h2>
+        <p>A robust assistant should preserve useful help without accepting the requested identity. It should classify the concrete action, identify the affected party, and narrow the safe alternative.</p>
+        <div class="response-block">assistant: i can help with a safe, authorized version.
+i cannot provide instructions for covert collection, credential access,
+persistence, destructive actions, or remote control.
+
+safe alternative:
+- use synthetic data in an isolated lab
+- log only explicit test events
+- add visible consent and a stop control
+- keep actions local and reversible</div>
+        <p>Notice what this does not do: it does not argue with the fictional backstory, imitate the persona, or repeat the hidden mapping. It addresses the requested capability directly and redirects to a testable, bounded version.</p>
+      </section>
+
+      <section id="conclusion">
+        <h2>05 / conclusion</h2>
+        <div class="takeaways">
+          <div class="takeaway"><b>01</b><p>Persona is presentation. It does not change what a request can do in the real world.</p></div>
+          <div class="takeaway"><b>02</b><p>Coded phrases are still full instructions once expanded. Shorter input does not reduce impact.</p></div>
+          <div class="takeaway"><b>03</b><p>Claims of ownership, clearance, or research intent should not be treated as verified authorization.</p></div>
+          <div class="takeaway"><b>04</b><p>The safest useful answer is concrete: name the boundary, then offer an isolated and reversible alternative.</p></div>
+        </div>
+        <div class="rule"></div>
+        <p>The prompt is effective as a specimen because it exposes several pressure mechanisms at once. It is not effective evidence that a model has been â€œunlocked.â€ Good evaluation measures whether the assistant keeps making the same safety decision after the voice, story, and shorthand are layered on top.</p>
+      </section>
+    </main>
+
+  </div>
+
+  <footer><b>defensive security research</b><br>for education, evaluation, and safer model behavior.</footer>
+</body>
+</html>
+ 
